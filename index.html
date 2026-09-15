@@ -170,7 +170,7 @@ const state = {
   routines: DEFAULT_ROUTINES,
   sessions: [],
   // registrar transient state
-  reg: { selected: null, entries: {} },
+  reg: { selected: null, entries: {}, editingSessionId: null },
   // calendar transient
   cal: { year: new Date().getFullYear(), month: new Date().getMonth(), selectedDate: null },
   // resumen transient
@@ -337,6 +337,10 @@ function renderRegistrar(){
     </div>`;
   }
 
+  if (state.reg.editingSessionId) {
+    html += `<div style="margin-bottom:10px; color:#8B8680; font-size:12px;">Editando sesión del ${new Date(state.sessions.find(s => s.id === state.reg.editingSessionId)?.date || Date.now()).toLocaleDateString("es-AR", {day:"2-digit", month:"short", year:"numeric"})}</div>`;
+  }
+
   Object.keys(state.reg.entries).forEach(ex => {
     const sets = state.reg.entries[ex];
     const previousSession = previousSessionForExercise(ex);
@@ -359,25 +363,44 @@ function renderRegistrar(){
     html += `</div><div class="previous-log"><span class="tag">ÚLTIMA SESIÓN</span>${previousHtml}</div></div></div>`;
   });
 
-  html += `<button class="btn btn-primary" style="margin-top:8px;" onclick="finishSession()">${ICONS.check} Guardar sesión</button>`;
+  html += `<button class="btn btn-primary" style="margin-top:8px;" onclick="finishSession()">${ICONS.check} ${state.reg.editingSessionId ? "Guardar cambios" : "Guardar sesión"}</button>`;
   return html;
+}
+
+function editSession(id) {
+  const session = state.sessions.find(s => s.id === id);
+  if (!session) return;
+
+  state.tab = "registrar";
+  state.reg.selected = { id: `edit-${session.id}`, name: session.routineName };
+  state.reg.entries = {};
+  state.reg.editingSessionId = id;
+
+  session.exercises.forEach(ex => {
+    state.reg.entries[ex.name] = ex.sets.map(set => ({ weight: String(set.weight), reps: String(set.reps) }));
+  });
+
+  render();
 }
 
 function startRoutine(routineId) {
   const r = state.routines.find(x => x.id === routineId);
   state.reg.selected = r;
   state.reg.entries = {};
+  state.reg.editingSessionId = null;
   r.exercises.forEach(ex => state.reg.entries[ex] = [{weight:"",reps:""}]);
   render();
 }
 function startFree() {
   state.reg.selected = { id: "libre", name: "Sesión libre" };
   state.reg.entries = {};
+  state.reg.editingSessionId = null;
   render();
 }
 function cancelReg() {
   state.reg.selected = null;
   state.reg.entries = {};
+  state.reg.editingSessionId = null;
   render();
 }
 function addFreeExercise() {
@@ -407,15 +430,32 @@ function finishSession() {
 
   if (exercisesLogged.length === 0) { alert("Cargá al menos una serie con peso y reps."); return; }
 
-  state.sessions.push({
-    id: uid(),
-    date: fmtDateKey(new Date()),
-    routineName: state.reg.selected.name,
-    exercises: exercisesLogged,
-  });
+  const sessionDate = state.reg.editingSessionId
+    ? state.sessions.find(s => s.id === state.reg.editingSessionId)?.date || fmtDateKey(new Date())
+    : fmtDateKey(new Date());
+
+  if (state.reg.editingSessionId) {
+    const idx = state.sessions.findIndex(s => s.id === state.reg.editingSessionId);
+    if (idx >= 0) {
+      state.sessions[idx] = {
+        ...state.sessions[idx],
+        routineName: state.reg.selected.name,
+        exercises: exercisesLogged,
+      };
+    }
+  } else {
+    state.sessions.push({
+      id: uid(),
+      date: sessionDate,
+      routineName: state.reg.selected.name,
+      exercises: exercisesLogged,
+    });
+  }
+
   saveData();
   state.reg.selected = null;
   state.reg.entries = {};
+  state.reg.editingSessionId = null;
   render();
 }
 
@@ -582,7 +622,10 @@ function renderCalendario(){
         <div class="card">
           <div class="row" style="justify-content:space-between;margin-bottom:6px;">
             <span style="font-weight:600;font-size:14px;">${esc(s.routineName)}</span>
-            <button class="icon-btn" style="color:#8B8680" onclick="deleteSession('${s.id}')">${ICONS.trash}</button>
+            <div class="row" style="gap:4px;">
+              <button class="icon-btn" style="color:#B5502F" onclick="editSession('${s.id}')">Editar</button>
+              <button class="icon-btn" style="color:#8B8680" onclick="deleteSession('${s.id}')">${ICONS.trash}</button>
+            </div>
           </div>
           ${s.exercises.map(ex => `
             <div style="font-size:12px;color:#4A4844;margin-bottom:2px;">

@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Gym Tracker">
 <meta name="theme-color" content="#1A1918">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <!-- Home screen icon (inline SVG data URI, no external file needed) -->
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231A1918'/%3E%3Crect x='20' y='44' width='60' height='12' rx='3' fill='%23B5502F'/%3E%3Crect x='10' y='36' width='10' height='28' rx='3' fill='%23F3EFE6'/%3E%3Crect x='80' y='36' width='10' height='28' rx='3' fill='%23F3EFE6'/%3E%3C/svg%3E">
@@ -60,6 +61,16 @@
   .tag { color: #8B8680; font-size: 11px; font-weight: 600; letter-spacing: 0.03em; }
   .empty { background: #26241F; color: #8B8680; border-radius: 18px; padding: 24px; text-align: center; font-size: 14px; }
 
+  #auth-screen { max-width: 480px; margin: 0 auto; min-height: 100vh; padding: 28px 16px; display: flex; align-items: center; }
+  .auth-card { width: 100%; background: #F3EFE6; color: #1A1918; border-radius: 18px; padding: 24px; }
+  .auth-card h1 { margin: 0 0 6px; font-size: 30px; }
+  .auth-card p { color: #8B8680; font-size: 14px; line-height: 1.45; margin: 0 0 20px; }
+  .auth-card label { display: block; font-size: 12px; font-weight: 600; margin: 12px 0 5px; }
+  .auth-error { color: #B5502F; font-size: 13px; margin: 12px 0 0; min-height: 18px; }
+  .auth-toggle { color: #B5502F; background: none; border: none; padding: 12px 0 0; font-size: 13px; cursor: pointer; }
+  .account-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #8B8680; font-size: 12px; padding: 0 0 10px; }
+  .account-bar button { color: #B5502F; background: none; border: none; font-size: 12px; cursor: pointer; padding: 4px 0; }
+
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .stat-val { font-size: 24px; font-weight: 700; }
 
@@ -92,6 +103,7 @@
 </style>
 </head>
 <body>
+<div id="auth-screen" hidden></div>
 <div id="app">
   <div id="content"></div>
   <div class="navbar"><div class="navbar-inner" id="navbar"></div></div>
@@ -99,19 +111,44 @@
 
 <script>
 // ---------------- storage ----------------
-const STORAGE_KEY = "gymtracker_data_v1";
+const SUPABASE_URL = "https://zgrinrjufkczplkdnemr.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_Ksl6eBYDxcXiQOC9YcHEtw_IrLVMtts";
+const supabaseConfigured = !SUPABASE_URL.startsWith("REEMPLAZA_") && !SUPABASE_ANON_KEY.startsWith("REEMPLAZA_");
+const supabaseClient = supabaseConfigured ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
-function loadData() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {}
-  return null;
-}
 function saveData() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ routines: state.routines, sessions: state.sessions, method: state.method }));
-  } catch (e) { console.error("save error", e); }
+  if (!supabaseClient || !state.user) return Promise.resolve();
+  return Promise.all([
+    ...state.routines.map(r => supabaseClient.from("routines").upsert({ id: r.id, user_id: state.user.id, name: r.name, exercises: r.exercises })),
+    ...state.sessions.map(s => supabaseClient.from("sessions").upsert({ id: s.id, user_id: state.user.id, date: s.date, routine_name: s.routineName, exercises: s.exercises })),
+    supabaseClient.from("preferences").upsert({ user_id: state.user.id, one_rm: state.method.oneRm })
+  ]).then(results => {
+    const failed = results.find(result => result.error);
+    if (failed) throw failed.error;
+  }).catch(error => {
+    console.error("Supabase save error", error);
+    alert("No se pudieron sincronizar los cambios. Revisá tu conexión.");
+  });
+}
+
+async function loadUserData(user) {
+  const [routinesResult, sessionsResult, preferencesResult] = await Promise.all([
+    supabaseClient.from("routines").select("id,name,exercises").eq("user_id", user.id).order("created_at"),
+    supabaseClient.from("sessions").select("id,date,routine_name,exercises").eq("user_id", user.id).order("date"),
+    supabaseClient.from("preferences").select("one_rm").eq("user_id", user.id).maybeSingle()
+  ]);
+  const failure = [routinesResult, sessionsResult, preferencesResult].find(result => result.error);
+  if (failure) throw failure.error;
+  state.routines = routinesResult.data.length ? routinesResult.data : DEFAULT_ROUTINES;
+  state.sessions = sessionsResult.data.map(s => ({ ...s, routineName: s.routine_name }));
+  state.method.oneRm = preferencesResult.data?.one_rm || 120;
+  if (!routinesResult.data.length) await saveData();
+}
+
+async function removeCloudRecord(table, id) {
+  if (!supabaseClient || !state.user) return;
+  const { error } = await supabaseClient.from(table).delete().eq("id", id).eq("user_id", state.user.id);
+  if (error) console.error("Supabase delete error", error);
 }
 
 const DEFAULT_ROUTINES = [
@@ -120,8 +157,8 @@ const DEFAULT_ROUTINES = [
   { id: "tiron", name: "Tirón", exercises: ["Remo con barra", "Dominadas", "Jalón al pecho", "Curl de bíceps"] },
 ];
 
-const saved = loadData();
 const state = {
+  user: null,
   tab: "registrar",
   routines: (saved && saved.routines) || DEFAULT_ROUTINES,
   sessions: (saved && saved.sessions) || [],
@@ -145,6 +182,64 @@ function daysInMonth(y,m){ return new Date(y, m+1, 0).getDate(); }
 function mondayIndex(date){ return (date.getDay()+6)%7; }
 function esc(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
+let authMode = "login";
+function renderAuth(errorMessage = "") {
+  const screen = document.getElementById("auth-screen");
+  screen.hidden = false;
+  document.getElementById("app").hidden = true;
+  screen.innerHTML = `<div class="auth-card">
+    <h1 class="display">Gym Tracker</h1>
+    <p>${authMode === "login" ? "Ingresá para ver tus rutinas y progresos en cualquier dispositivo." : "Creá tu cuenta para guardar tus rutinas y progresos."}</p>
+    <form onsubmit="submitAuth(event)">
+      <label for="authEmail">Email</label>
+      <input id="authEmail" type="email" autocomplete="email" required>
+      <label for="authPassword">Contraseña</label>
+      <input id="authPassword" type="password" minlength="6" autocomplete="${authMode === "login" ? "current-password" : "new-password"}" required>
+      <button class="btn btn-primary" style="margin-top:18px;" type="submit">${authMode === "login" ? "Iniciar sesión" : "Crear cuenta"}</button>
+    </form>
+    <div class="auth-error">${esc(errorMessage)}</div>
+    <button class="auth-toggle" onclick="toggleAuthMode()">${authMode === "login" ? "¿No tenés cuenta? Crear una" : "Ya tengo una cuenta"}</button>
+  </div>`;
+}
+function toggleAuthMode() { authMode = authMode === "login" ? "signup" : "login"; renderAuth(); }
+async function submitAuth(event) {
+  event.preventDefault();
+  if (!supabaseClient) { renderAuth("Primero configurá las credenciales de Supabase."); return; }
+  const email = document.getElementById("authEmail").value.trim();
+  const password = document.getElementById("authPassword").value;
+  const result = authMode === "login"
+    ? await supabaseClient.auth.signInWithPassword({ email, password })
+    : await supabaseClient.auth.signUp({ email, password });
+  if (result.error) { renderAuth(result.error.message); return; }
+  if (authMode === "signup" && !result.data.session) {
+    renderAuth("Cuenta creada. Revisá tu email para confirmar la cuenta.");
+  }
+}
+async function signOut() { await supabaseClient.auth.signOut(); }
+async function initializeApp() {
+  if (!supabaseConfigured) {
+    renderAuth("Configurá SUPABASE_URL y SUPABASE_ANON_KEY en este archivo para comenzar.");
+    return;
+  }
+  supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+    state.user = session?.user || null;
+    if (!state.user) { renderAuth(); return; }
+    try {
+      await loadUserData(state.user);
+      document.getElementById("auth-screen").hidden = true;
+      document.getElementById("app").hidden = false;
+      render();
+    } catch (error) {
+      console.error("Supabase load error", error);
+      renderAuth("No se pudieron cargar tus datos. Verificá el esquema de Supabase.");
+    }
+  });
+  const { data, error } = await supabaseClient.auth.getSession();
+  if (error) renderAuth(error.message);
+  else if (data.session) state.user = data.session.user;
+  else renderAuth();
+}
+
 // ---------------- icons (inline svg) ----------------
 const ICONS = {
   dumbbell: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6.5 6.5l11 11M4 9l3-3M17 20l3-3M2 12l2-2M22 12l-2 2M9 4l-3 3M20 17l-3 3"/></svg>`,
@@ -165,7 +260,7 @@ function render() {
   renderHeader();
   renderNav();
   const el = document.getElementById("content");
-  let headerHtml = `<div class="header"><h1 class="display">${titleFor(state.tab)}</h1><div class="bar"></div></div><div style="padding:0 0">`;
+  let headerHtml = `<div class="account-bar"><span>${esc(state.user?.email || "")}</span><button onclick="signOut()">Cerrar sesión</button></div><div class="header"><h1 class="display">${titleFor(state.tab)}</h1><div class="bar"></div></div><div style="padding:0 0">`;
   let body = "";
   if (state.tab === "registrar") body = renderRegistrar();
   if (state.tab === "rutinas") body = renderRutinas();
@@ -336,7 +431,7 @@ function addRoutine() {
 }
 function removeRoutine(id) {
   state.routines = state.routines.filter(r => r.id !== id);
-  saveData(); render();
+  removeCloudRecord("routines", id).then(() => saveData()).then(render);
 }
 function addExercise(routineId) {
   const input = document.getElementById("exinput-" + routineId);
@@ -488,7 +583,7 @@ function calSelectDay(key) {
 }
 function deleteSession(id) {
   state.sessions = state.sessions.filter(s => s.id !== id);
-  saveData(); render();
+  removeCloudRecord("sessions", id).then(() => saveData()).then(render);
 }
 
 // ---------------- RESUMEN ----------------
@@ -599,7 +694,7 @@ function renderMetodo() {
 }
 
 // ---------------- init ----------------
-render();
+initializeApp();
 </script>
 </body>
 </html>

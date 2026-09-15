@@ -63,6 +63,21 @@
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .stat-val { font-size: 24px; font-weight: 700; }
 
+  .method-intro { background: #26241F; color: #F3EFE6; border-radius: 18px; padding: 16px; margin-bottom: 12px; }
+  .method-intro p { color: #B8B1A5; font-size: 13px; line-height: 1.45; margin: 5px 0 14px; }
+  .method-1rm { display: flex; align-items: center; gap: 10px; }
+  .method-1rm label { font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .method-1rm input { flex: 1; background: #F3EFE6; border-color: #F3EFE6; }
+  .method-scroll { overflow-x: auto; margin: -4px; padding: 4px; }
+  .method-table { width: 100%; min-width: 420px; border-collapse: collapse; font-size: 12px; }
+  .method-table th { color: #8B8680; font-size: 10px; letter-spacing: 0.04em; text-align: left; padding: 0 8px 8px; }
+  .method-table th:first-child, .method-table td:first-child { padding-left: 0; }
+  .method-table td { border-top: 1px solid #E4DFCF; padding: 10px 8px; vertical-align: middle; }
+  .method-table .week { font-weight: 700; color: #B5502F; width: 38px; }
+  .method-table .scheme { font-weight: 700; white-space: nowrap; }
+  .method-table .load { color: #4A4844; white-space: nowrap; }
+  .method-table .load strong { color: #1A1918; }
+
   .month-nav { display: flex; align-items: center; justify-content: space-between; }
   .month-nav button { background: none; border: none; color: #1A1918; font-size: 18px; padding: 4px 8px; cursor: pointer; }
   .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 8px; }
@@ -95,7 +110,7 @@ function loadData() {
 }
 function saveData() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ routines: state.routines, sessions: state.sessions }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ routines: state.routines, sessions: state.sessions, method: state.method }));
   } catch (e) { console.error("save error", e); }
 }
 
@@ -118,6 +133,8 @@ const state = {
   res: { year: new Date().getFullYear(), month: new Date().getMonth() },
   // progreso transient
   prog: { exercise: null },
+  // método transient
+  method: { oneRm: (saved && saved.method && saved.method.oneRm) || 120 },
 };
 
 function uid() { return Math.random().toString(36).slice(2, 10); }
@@ -155,10 +172,11 @@ function render() {
   if (state.tab === "progreso") body = renderProgreso();
   if (state.tab === "calendario") body = renderCalendario();
   if (state.tab === "resumen") body = renderResumen();
+  if (state.tab === "metodo") body = renderMetodo();
   el.innerHTML = headerHtml + `<div style="padding:0 0 0;">${body}</div></div>`;
 }
 function titleFor(t){
-  return { registrar:"Registrar", rutinas:"Rutinas", progreso:"Progreso", calendario:"Calendario", resumen:"Resumen" }[t];
+  return { registrar:"Registrar", rutinas:"Rutinas", progreso:"Progreso", calendario:"Calendario", resumen:"Resumen", metodo:"Método" }[t];
 }
 function renderHeader(){} // header rendered inline in render()
 
@@ -169,6 +187,7 @@ function renderNav() {
     { id: "progreso", label: "Progreso", icon: ICONS.trend },
     { id: "calendario", label: "Calendario", icon: ICONS.calendar },
     { id: "resumen", label: "Resumen", icon: ICONS.chart },
+    { id: "metodo", label: "Método", icon: ICONS.list },
   ];
   document.getElementById("navbar").innerHTML = tabs.map(t => `
     <button class="navbtn ${state.tab===t.id?'active':''}" onclick="setTab('${t.id}')">
@@ -520,6 +539,63 @@ function resChangeMonth(delta) {
   if (m<0){m=11;y--;} if (m>11){m=0;y++;}
   state.res.month = m; state.res.year = y;
   render();
+}
+
+// ---------------- METODO ----------------
+const METHOD_WEEKS = [
+  [1, "4×5", "72.5", "3×8", "65"],
+  [2, "4×5", "75", "3×8", "67.5"],
+  [3, "4×4", "77.5", "3×7", "70"],
+  [4, "3×4", "65", "2×6", "60"],
+  [5, "5×4", "77.5", "3×6", "70"],
+  [6, "4×3", "82.5", "3×6", "72.5"],
+  [7, "5×3", "85", "3×5", "75"],
+  [8, "3×4", "65", "2×5", "60"],
+  [9, "4×3", "85", "3×5", "72.5"],
+  [10, "4×2", "87.5", "3×5", "70"],
+  [11, "3×2", "90", "3×4", "67.5"],
+  [12, "2–3×1 + test", "92.5–100", "—", "—"],
+];
+
+function methodLoad(percent, oneRm) {
+  if (percent === "—") return "—";
+  const values = percent.split("–").map(p => Math.round(oneRm * parseFloat(p) / 100));
+  return values.length > 1 ? `${values[0]}–${values[1]} kg` : `${values[0]} kg`;
+}
+function updateMethodOneRm(value) {
+  const oneRm = parseFloat(value);
+  if (Number.isFinite(oneRm) && oneRm > 0) {
+    state.method.oneRm = oneRm;
+    saveData();
+    render();
+  }
+}
+function renderMetodo() {
+  const oneRm = state.method.oneRm;
+  return `<div class="method-intro">
+    <div style="font-weight:600;font-size:17px;">Método de 12 semanas</div>
+    <p>Alterná un día de fuerza y un día de volumen. Los kilos se calculan a partir de tu 1RM.</p>
+    <div class="method-1rm">
+      <label for="methodOneRm">Tu 1RM</label>
+      <input id="methodOneRm" type="number" inputmode="decimal" min="1" step="0.5" value="${oneRm}" onchange="updateMethodOneRm(this.value)" aria-label="Tu 1RM en kilogramos">
+      <span style="font-size:13px;color:#B8B1A5;">kg</span>
+    </div>
+  </div>
+  <div class="card method-scroll">
+    <table class="method-table">
+      <thead><tr>
+        <th>SEM.</th><th>DÍA FUERZA</th><th>% 1RM</th><th>DÍA VOLUMEN</th><th>% 1RM</th>
+      </tr></thead>
+      <tbody>${METHOD_WEEKS.map(([week, forceSets, forcePct, volumeSets, volumePct]) => `
+        <tr>
+          <td class="week">${week}</td>
+          <td class="scheme">${forceSets}</td>
+          <td class="load">${forcePct}% <strong>— ${methodLoad(forcePct, oneRm)}</strong></td>
+          <td class="scheme">${volumeSets}</td>
+          <td class="load">${volumePct === "—" ? "—" : `${volumePct}% <strong>— ${methodLoad(volumePct, oneRm)}</strong>`}</td>
+        </tr>`).join("")}</tbody>
+    </table>
+  </div>`;
 }
 
 // ---------------- init ----------------

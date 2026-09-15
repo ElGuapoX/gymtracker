@@ -207,36 +207,41 @@ async function submitAuth(event) {
   if (!supabaseClient) { renderAuth("Primero configurá las credenciales de Supabase."); return; }
   const email = document.getElementById("authEmail").value.trim();
   const password = document.getElementById("authPassword").value;
-  const result = authMode === "login"
-    ? await supabaseClient.auth.signInWithPassword({ email, password })
-    : await supabaseClient.auth.signUp({ email, password });
-  if (result.error) { renderAuth(result.error.message); return; }
-  if (authMode === "signup" && !result.data.session) {
-    renderAuth("Cuenta creada. Revisá tu email para confirmar la cuenta.");
+  try {
+    const result = authMode === "login"
+      ? await supabaseClient.auth.signInWithPassword({ email, password })
+      : await supabaseClient.auth.signUp({ email, password });
+    if (result.error) { renderAuth(result.error.message); return; }
+    if (authMode === "signup" && !result.data.session) {
+      renderAuth("Cuenta creada. Revisá tu email para confirmar la cuenta.");
+    }
+  } catch (error) {
+    renderAuth("No se pudo conectar con el servidor. Revisá tu conexión e intentá otra vez.");
   }
 }
 async function signOut() { await supabaseClient.auth.signOut(); }
+async function applySession(session) {
+  state.user = session?.user || null;
+  if (!state.user) { renderAuth(); return; }
+  try {
+    await loadUserData(state.user);
+    document.getElementById("auth-screen").hidden = true;
+    document.getElementById("app").hidden = false;
+    render();
+  } catch (error) {
+    console.error("Supabase load error", error);
+    renderAuth("No se pudieron cargar tus datos. Verificá el esquema de Supabase.");
+  }
+}
 async function initializeApp() {
   if (!supabaseConfigured) {
     renderAuth("Configurá SUPABASE_URL y SUPABASE_ANON_KEY en este archivo para comenzar.");
     return;
   }
-  supabaseClient.auth.onAuthStateChange(async (_event, session) => {
-    state.user = session?.user || null;
-    if (!state.user) { renderAuth(); return; }
-    try {
-      await loadUserData(state.user);
-      document.getElementById("auth-screen").hidden = true;
-      document.getElementById("app").hidden = false;
-      render();
-    } catch (error) {
-      console.error("Supabase load error", error);
-      renderAuth("No se pudieron cargar tus datos. Verificá el esquema de Supabase.");
-    }
-  });
+  supabaseClient.auth.onAuthStateChange((_event, session) => applySession(session));
   const { data, error } = await supabaseClient.auth.getSession();
   if (error) renderAuth(error.message);
-  else if (data.session) state.user = data.session.user;
+  else if (data.session) await applySession(data.session);
   else renderAuth();
 }
 

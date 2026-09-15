@@ -160,8 +160,8 @@ const DEFAULT_ROUTINES = [
 const state = {
   user: null,
   tab: "registrar",
-  routines: (saved && saved.routines) || DEFAULT_ROUTINES,
-  sessions: (saved && saved.sessions) || [],
+  routines: DEFAULT_ROUTINES,
+  sessions: [],
   // registrar transient state
   reg: { selected: null, entries: {} },
   // calendar transient
@@ -171,7 +171,7 @@ const state = {
   // progreso transient
   prog: { exercise: null },
   // método transient
-  method: { oneRm: (saved && saved.method && saved.method.oneRm) || 120 },
+  method: { oneRm: 120 },
 };
 
 function uid() { return Math.random().toString(36).slice(2, 10); }

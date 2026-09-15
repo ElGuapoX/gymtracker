@@ -51,6 +51,11 @@
   .row-set { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
   .set-num { width: 18px; font-size: 11px; color: #8B8680; }
   .icon-btn { background: none; border: none; color: #B5502F; padding: 4px; cursor: pointer; }
+  .exercise-log { display: grid; grid-template-columns: minmax(0, 1fr) 112px; gap: 12px; align-items: start; }
+  .previous-log { border-left: 1px solid #E4DFCF; padding-left: 12px; min-height: 58px; }
+  .previous-log .tag { margin-bottom: 6px; display: block; }
+  .previous-set { color: #4A4844; font-size: 12px; line-height: 1.6; white-space: nowrap; }
+  .previous-empty { color: #8B8680; font-size: 11px; line-height: 1.35; }
 
   .navbar { position: fixed; bottom: 0; left: 0; right: 0; padding-bottom: env(safe-area-inset-bottom); }
   .navbar-inner { max-width: 480px; margin: 0 auto; background: #F3EFE6; border-top: 1px solid #E4DFCF; display: flex; justify-content: space-around; padding: 8px 4px; }
@@ -301,6 +306,12 @@ function renderNav() {
 function setTab(t){ state.tab = t; render(); }
 
 // ---------------- REGISTRAR ----------------
+function previousSessionForExercise(exerciseName) {
+  return state.sessions
+    .filter(session => session.exercises.some(exercise => exercise.name === exerciseName))
+    .sort((a, b) => b.date.localeCompare(a.date))[0];
+}
+
 function renderRegistrar(){
   if (!state.reg.selected) {
     let html = state.routines.map(r => `
@@ -328,7 +339,12 @@ function renderRegistrar(){
 
   Object.keys(state.reg.entries).forEach(ex => {
     const sets = state.reg.entries[ex];
-    html += `<div class="card"><h3>${esc(ex)}</h3><div style="margin-top:8px;">`;
+    const previousSession = previousSessionForExercise(ex);
+    const previousExercise = previousSession?.exercises.find(item => item.name === ex);
+    const previousHtml = previousExercise
+      ? previousExercise.sets.map((set, index) => `<div class="previous-set">${index + 1}. ${esc(set.weight)} kg × ${esc(set.reps)}</div>`).join("")
+      : `<div class="previous-empty">Todavía no hay registros.</div>`;
+    html += `<div class="card"><h3>${esc(ex)}</h3><div class="exercise-log" style="margin-top:8px;"><div>`;
     sets.forEach((s, idx) => {
       html += `<div class="row-set">
         <span class="set-num">${idx+1}</span>
@@ -340,7 +356,7 @@ function renderRegistrar(){
       </div>`;
     });
     html += `<button class="icon-btn" style="display:flex;align-items:center;gap:4px;font-size:13px;font-weight:600;margin-top:4px;" onclick="addSet('${esc(ex)}')">${ICONS.plus} Serie</button>`;
-    html += `</div></div>`;
+    html += `</div><div class="previous-log"><span class="tag">ÚLTIMA SESIÓN</span>${previousHtml}</div></div></div>`;
   });
 
   html += `<button class="btn btn-primary" style="margin-top:8px;" onclick="finishSession()">${ICONS.check} Guardar sesión</button>`;

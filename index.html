@@ -61,7 +61,9 @@
   .tag { color: #8B8680; font-size: 11px; font-weight: 600; letter-spacing: 0.03em; }
   .empty { background: #26241F; color: #8B8680; border-radius: 18px; padding: 24px; text-align: center; font-size: 14px; }
 
-  #auth-screen { max-width: 480px; margin: 0 auto; min-height: 100vh; padding: 28px 16px; display: flex; align-items: center; }
+  #auth-screen { position: fixed; inset: 0; z-index: 10; overflow-y: auto; background: #1A1918; padding: 28px 16px; display: flex; align-items: center; justify-content: center; }
+  #auth-screen[hidden], #app[hidden] { display: none !important; }
+  #auth-screen .auth-card { max-width: 448px; }
   .auth-card { width: 100%; background: #F3EFE6; color: #1A1918; border-radius: 18px; padding: 24px; }
   .auth-card h1 { margin: 0 0 6px; font-size: 30px; }
   .auth-card p { color: #8B8680; font-size: 14px; line-height: 1.45; margin: 0 0 20px; }
@@ -104,7 +106,7 @@
 </head>
 <body>
 <div id="auth-screen" hidden></div>
-<div id="app">
+<div id="app" hidden>
   <div id="content"></div>
   <div class="navbar"><div class="navbar-inner" id="navbar"></div></div>
 </div>

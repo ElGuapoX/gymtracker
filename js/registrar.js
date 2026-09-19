@@ -19,12 +19,14 @@ function stopRestTimer() { clearInterval(restTimerInterval); restTimerInterval =
 function requestNotificationPermission() { if (window.Notification && Notification.permission === "default") Notification.requestPermission(); }
 function renderRegistrar() {
   if (!state.reg.selected) {
-    let html = state.routines.map(r => `<button class="btn-routine" onclick="startRoutine('${r.id}')"><div style="font-weight:600;font-size:17px;">${esc(r.name)}</div><div class="sub" style="margin-top:2px;">${esc(r.exercises.join(" · "))}</div></button>`).join("");
-    html += `<button class="btn-ghost" onclick="startFree()">+ Sesión libre</button>`; return html;
+    let html = `<div class="register-intro"><div class="tag">NUEVA SESIÓN</div><strong>¿Qué vas a entrenar hoy?</strong><span>Elegí una rutina para empezar con tus pesos anteriores ya preparados.</span></div>`;
+    html += `<div class="register-routines">${state.routines.map(r => `<button class="routine-choice" onclick="startRoutine('${r.id}')"><span class="routine-choice-icon">${ICONS.dumbbell}</span><span class="routine-choice-copy"><strong>${esc(r.name)}</strong><small>${r.exercises.length} ejercicio${r.exercises.length === 1 ? "" : "s"}${r.exercises.length ? ` · ${esc(r.exercises.slice(0, 2).join(" · "))}` : ""}</small></span>${ICONS.chevR}</button>`).join("")}</div>`;
+    html += `<button class="free-session-choice" onclick="startFree()"><span>${ICONS.plus}</span><span><strong>Sesión libre</strong><small>Elegí los ejercicios sobre la marcha</small></span>${ICONS.chevR}</button>`; return html;
   }
   const sel = state.reg.selected;
-  let html = `<div class="row" style="justify-content:space-between;margin-bottom:12px;"><div style="font-weight:600;font-size:18px;">${esc(sel.name)}</div><button class="icon-btn" style="color:#8B8680" onclick="cancelReg()">${ICONS.x}</button></div>`;
+  let html = `<div class="session-heading"><div><div class="tag">REGISTRANDO SESIÓN</div><h2 class="display">${esc(sel.name)}</h2></div><button class="icon-btn session-cancel" onclick="cancelReg()" aria-label="Cancelar sesión">${ICONS.x}</button></div>`;
   if (sel.id === "libre") html += `<div class="row" style="margin-bottom:12px;"><input id="freeExName" placeholder="Nombre del ejercicio" style="flex:1"/><button class="btn" style="background:#B5502F;color:#F3EFE6;flex-shrink:0" onclick="addFreeExercise()">Agregar</button></div>`;
+  html += `<div class="section-label">SERIES Y PESOS</div>`;
   html += renderRestTimer();
   html += `<button class="btn btn-ghost" style="padding:10px;margin-bottom:12px;" onclick="requestNotificationPermission()">Activar aviso de fin de descanso</button>`;
   if (state.reg.editingSessionId) html += `<div style="margin-bottom:10px;color:#8B8680;font-size:12px;">Editando sesión del ${new Date(state.sessions.find(s => s.id === state.reg.editingSessionId)?.date || Date.now()).toLocaleDateString("es-AR", {day:"2-digit", month:"short", year:"numeric"})}</div>`;
@@ -33,12 +35,12 @@ function renderRegistrar() {
     const previousExercise = previousExerciseFor(ex);
     const previousWeight = previousExercise?.sets[previousExercise.sets.length - 1]?.weight;
     const previousHtml = previousExercise ? previousExercise.sets.map((set, index) => `<div class="previous-set">${index + 1}. ${esc(set.weight)} kg × ${esc(set.reps)}</div>`).join("") : `<div class="previous-empty">Todavía no hay registros.</div>`;
-    html += `<div class="card"><h3>${esc(ex)}</h3>${previousWeight == null ? "" : `<div class="previous-weight">Peso sugerido: ${esc(previousWeight)} kg</div>`}<div class="exercise-log" style="margin-top:8px;"><div>`;
+    html += `<div class="card exercise-card"><div class="exercise-card-heading"><h3>${esc(ex)}</h3><span>${sets.length} serie${sets.length === 1 ? "" : "s"}</span></div>${previousWeight == null ? "" : `<div class="previous-weight">Peso sugerido: ${esc(previousWeight)} kg</div>`}<div class="exercise-log" style="margin-top:8px;"><div>`;
     sets.forEach((s, idx) => { html += `<div class="row-set"><span class="set-num">${idx+1}</span><div class="weight-control"><button class="weight-step" onclick="adjustWeight('${esc(ex)}',${idx},-2.5)" aria-label="Restar 2.5 kg">−2.5</button><input type="number" inputmode="decimal" step="0.5" placeholder="kg" value="${esc(s.weight)}" oninput="updateSet('${esc(ex)}',${idx},'weight',this.value)"/><button class="weight-step" onclick="adjustWeight('${esc(ex)}',${idx},2.5)" aria-label="Sumar 2.5 kg">+2.5</button></div><input type="number" inputmode="numeric" placeholder="reps" value="${esc(s.reps)}" style="flex:1" oninput="updateSet('${esc(ex)}',${idx},'reps',this.value)"/><button class="icon-btn" onclick="removeSet('${esc(ex)}',${idx})">${ICONS.x}</button></div>`; });
-    html += `<button class="icon-btn" style="display:flex;align-items:center;gap:4px;font-size:13px;font-weight:600;margin-top:4px;" onclick="addSet('${esc(ex)}')">${ICONS.plus} Serie</button></div><div class="previous-log"><span class="tag">ÚLTIMA SESIÓN</span>${previousHtml}</div></div></div>`;
+    html += `<button class="add-set-btn" onclick="addSet('${esc(ex)}')">${ICONS.plus} Agregar serie</button></div><div class="previous-log"><span class="tag">ÚLTIMA SESIÓN</span>${previousHtml}</div></div></div>`;
   });
-  html += `<div class="card"><label for="sessionNotes" style="font-size:13px;font-weight:600;">Notas de la sesión</label><textarea id="sessionNotes" class="note-input" placeholder="Cómo te sentiste, técnica, molestias...">${esc(state.reg.notes || "")}</textarea><label for="sessionRpe" style="display:block;font-size:13px;font-weight:600;margin-top:10px;">RPE (1-10)</label><input id="sessionRpe" type="number" min="1" max="10" step="1" value="${esc(state.reg.rpe || "")}" placeholder="Opcional"></div>`;
-  html += `<button class="btn btn-primary" style="margin-top:8px;" onclick="finishSession()">${ICONS.check} ${state.reg.editingSessionId ? "Guardar cambios" : "Guardar sesión"}</button>`;
+  html += `<div class="session-details"><div class="session-details-heading"><span class="session-details-icon">${ICONS.check}</span><div><strong>Cierre de sesión</strong><small>Guardá cómo salió tu entrenamiento.</small></div></div><label for="sessionNotes">Notas <span>Opcional</span></label><textarea id="sessionNotes" class="note-input" placeholder="Cómo te sentiste, técnica, molestias...">${esc(state.reg.notes || "")}</textarea><label for="sessionRpe">RPE <span>Esfuerzo del 1 al 10</span></label><input id="sessionRpe" type="number" min="1" max="10" step="1" value="${esc(state.reg.rpe || "")}" placeholder="Opcional"></div>`;
+  html += `<div class="session-actions"><button class="btn btn-ghost" onclick="cancelReg()">Cancelar</button><button class="btn btn-primary" onclick="finishSession()">${ICONS.check} ${state.reg.editingSessionId ? "Guardar cambios" : "Guardar sesión"}</button></div>`;
   return html;
 }
 function editSession(id) {
